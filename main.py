@@ -8,13 +8,15 @@ FILE_2023 = "2023SalarySurvey_DATA.xlsx"
 COLUMNS_2015 = [
     "Member","EmploymentStatus","WorkFunction","Industry","JobSatisfaction",
     "LevelOfEducation","YearsOfExperience","Age","Sex","AACECertified",
-    "CurrentSalaryAmount","SameEmployer","WorkHours","Travel","ProjectSize"
+    "CurrentSalaryCurrency","CurrentSalaryAmount",
+    "SameEmployer","WorkHours","Travel","ProjectSize"
 ]
 
 COLUMNS_2023 = [
     "Member","EmploymentStatus","WorkFunction","Industry","JobSatisfaction",
     "LevelOfEducation","YearsOfExperience","Age","Sex","AACECertified",
-    "CurrentSalaryAmount","SameEmployer","WorkHours","Travel","ProjectSize"
+    "CurrentSalaryCurrency","CurrentSalaryAmount",
+    "SameEmployer","WorkHours","Travel","ProjectSize"
 ]
 
 EXCHANGE_RATES_TO_USD = {
@@ -40,7 +42,6 @@ def load_data():
 
     df_2015["SurveyYear"] = 2015
     df_2023["SurveyYear"] = 2023
-    
 
     combined = pd.concat([df_2015, df_2023], ignore_index=True)
 
@@ -48,9 +49,13 @@ def load_data():
     combined["CurrentSalaryAmount"] = pd.to_numeric(combined["CurrentSalaryAmount"], errors="coerce")
     combined["Age"] = pd.to_numeric(combined["Age"], errors="coerce")
 
-    combined["Currency"] = combined["CurrentSalaryCurrency"].astype(str).str.upper().str.strip()
+    if "CurrentSalaryCurrency" in combined.columns:
+        combined["Currency"] = combined["CurrentSalaryCurrency"].astype(str).str.upper().str.strip()
+    else:
+        combined["Currency"] = "USD"
 
     combined["ExchangeRate"] = combined["Currency"].map(EXCHANGE_RATES_TO_USD)
+    combined["ExchangeRate"] = combined["ExchangeRate"].fillna(1.0)
 
     combined["SalaryUSD"] = combined["CurrentSalaryAmount"] * combined["ExchangeRate"]
 
@@ -58,6 +63,7 @@ def load_data():
     combined["IsMember"] = combined["Member"].astype(str).str.contains("Yes", case=False, na=False)
 
     return combined
+
 
 st.title("Salary Correlation Dashboard")
 
