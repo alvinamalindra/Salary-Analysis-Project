@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import r2_score
+from matplotlib.ticker import MultipleLocator
 
 FILE_2015 = "2015SalarySurveyDATA.xlsx"
 FILE_2023 = "2023SalarySurvey_DATA.xlsx"
@@ -45,50 +45,86 @@ def plot_group(df, group_filter, title):
     df_group = df_group[df_group["SalaryUSD"] > 10000]
     df_group = df_group[df_group["SalaryUSD"] < 500000]
 
-    if len(df_group) < 15:
+    if len(df_group) < 10:
         st.write("Not enough data for", title)
         return
 
-    x = df_group["YearsOfExperience"]
-    y = df_group["SalaryUSD"]
+    # ---- BASELINE STATS (DO NOT CHANGE) ----
+    base_mean = df_group["SalaryUSD"].mean()
+    base_std = df_group["SalaryUSD"].std()
 
-    mean_salary = y.mean()
-    std_salary = y.std()
+    UCL = base_mean + 3 * base_std
+    LCL = base_mean - 3 * base_std
 
-    coeffs = np.polyfit(x, y, 3)
-    poly = np.poly1d(coeffs)
+    # ---- FILTER ONLY FOR DISPLAY ----
+    df_plot = df_group[df_group["SalaryUSD"] <= UCL]
 
-    x_sorted = np.linspace(x.min(), x.max(), 250)
-    y_fit = poly(x_sorted)
+    x = df_plot["YearsOfExperience"]
+    y = df_plot["SalaryUSD"]
 
-    r2 = r2_score(y, poly(x))
+    # Best-fit polynomial
+    if len(x) > 5:
+        z = np.polyfit(x, y, 3)
+        p = np.poly1d(z)
+        x_sorted = np.linspace(x.min(), x.max(), 200)
+        y_fit = p(x_sorted)
+    else:
+        x_sorted = np.linspace(x.min(), x.max(), 200)
+        y_fit = None
 
-    fig, ax = plt.subplots(figsize=(4.6, 3.0))
+    fig, ax = plt.subplots(figsize=(5.6, 3.4))
 
-    ax.scatter(x, y, alpha=0.18, s=12)
+    # Scatter points
+    ax.scatter(x, y, alpha=0.35, s=14)
 
-    ax.plot(x_sorted, y_fit, linewidth=3)
+    # Best-fit curve
+    if y_fit is not None:
+        ax.plot(x_sorted, y_fit)
 
-    ax.axhline(mean_salary, linewidth=1.3)
-    ax.axhline(mean_salary + 3*std_salary, linestyle="--", linewidth=1)
-    ax.axhline(mean_salary - 3*std_salary, linestyle="--", linewidth=1)
+    # ---- CONTROL LINES (BASELINE, NEVER MOVE) ----
+    ax.axhline(base_mean)
+    ax.axhline(UCL, linestyle="--")
+    ax.axhline(LCL, linestyle="--")
+
+    # ---- Y LIMITS MUST RESPECT TRUE UCL/LCL ----
+    ymin = min(y.min(), LCL) * 0.95
+    ymax = max(y.max(), UCL) * 1.05
+    ax.set_ylim(ymin, ymax)
+
+    # ---- LABELS ON RIGHT ----
+    x_label_pos = x_sorted.max() + (x_sorted.max() * 0.03)
+
+    ax.text(x_label_pos, base_mean, "Mean", va="center")
+    ax.text(x_label_pos, UCL, "UCL +3σ", va="center")
+    ax.text(x_label_pos, LCL, "LCL −3σ", va="center")
 
     ax.set_xlabel("Years of Experience")
     ax.set_ylabel("Salary (USD)")
     ax.set_title(title)
+
+    # Granularity 50k
+    ax.set_yticks(np.arange(0, 600000, 50000))
     ax.ticklabel_format(style="plain", axis="y")
+
+    # Remove legend box
+    ax.legend([], [], frameon=False)
+
+    plt.subplots_adjust(right=0.85)
 
     st.pyplot(fig)
 
-    st.write("Correlation:", round(x.corr(y), 4))
-    st.write("R² Best-Fit:", round(r2, 4))
-    st.write("Mean Salary:", round(mean_salary, 2))
+    # ---- METRICS ----
+    corr = df_plot["YearsOfExperience"].corr(df_plot["SalaryUSD"])
+    r2 = corr ** 2
 
+    st.write("Correlation:", round(corr, 4))
+    st.write("R² Best-Fit:", round(r2, 4))
+    st.write("Baseline Mean Salary:", round(base_mean, 2))
+    st.write("Baseline UCL (+3σ):", round(UCL, 2))
 
 st.title("Salary Pattern Analysis Dashboard")
 
 df = load_data()
-
 st.write("Total records:", len(df))
 
 st.subheader("Members Only")

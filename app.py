@@ -1,118 +1,88 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from scipy.stats import pearsonr
-import statsmodels.api as sm
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Salary Survey Research", layout="wide")
-st.title("📊 AACE Salary Survey — Correlation & Causation Research")
+st.set_page_config(layout="wide")
 
-@st.cache_data
-def load_data():
-    df_2015 = pd.read_excel("2015SalarySurveyDATA.xlsx")
-    df_2023 = pd.read_excel("2023SalarySurvey_DATA.xlsx")
-    df_2015["Year"] = 2015
-    df_2023["Year"] = 2023
-    return df_2015, df_2023
+st.title("Salary vs Experience — SPC Best Fit Mode")
 
-df_2015, df_2023 = load_data()
+# Load data
+uploaded_file = st.file_uploader("Upload Salary Data (CSV)", type=["csv"])
 
-# --- Standardize columns ---
-rename_map = {
-    "YearsOfExperience": "Experience",
-    "LevelOfEducation": "Education",
-    "Sex": "Gender"
-}
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
 
-df_2015 = df_2015.rename(columns=rename_map)
-df_2023 = df_2023.rename(columns=rename_map)
+    # Required columns
+    # YearsOfExperience, SalaryUSD, MemberStatus
 
-# --- Certification Flag ---
-cert_cols = [c for c in df_2023.columns if c.startswith("CertType")] + ["AACECertified"]
+    members_only = st.checkbox("Members Only", value=True)
 
-df_2015["IsCertified"] = (df_2015["AACECertified"] == "Yes")
-df_2023["IsCertified"] = df_2023[cert_cols].notnull().any(axis=1)
+    if members_only:
+        df = df[df["MemberStatus"] == "Member"]
 
-# --- Conference / RP / Presenter Flags ---
-conf_col = "Have you attended an AACE Conference & Expo (Annual Meeting)?"
-paper_col = "Have you presented a paper at an AACE Conference & Expo (Annual Meeting)?"
-rp_col = "Have you contributed to an AACE recommended practice?"
+    # Compute BASELINE stats (never changes)
+    base_mean = df["SalaryUSD"].mean()
+    base_std = df["SalaryUSD"].std()
 
-df_2023["AttendedConference"] = df_2023[conf_col] == "Yes"
-df_2023["PresentedPaper"] = df_2023[paper_col] == "Yes"
-df_2023["ContributedRP"] = df_2023[rp_col] == "Yes"
+    UCL = base_mean + 3 * base_std
+    LCL = base_mean - 3 * base_std
 
-df_2015["AttendedConference"] = np.nan
-df_2015["PresentedPaper"] = np.nan
-df_2015["ContributedRP"] = np.nan
+    remove_outliers = st.checkbox("Remove +3σ Outliers", value=False)
 
-# --- Combine ---
-combined = pd.concat([df_2015, df_2023], ignore_index=True)
+    # Filter data ONLY — DO NOT recompute sigma
+    plot_df = df.copy()
+    if remove_outliers:
+        plot_df = plot_df[plot_df["SalaryUSD"] <= UCL]
 
-combined["CurrentSalaryAmount"] = pd.to_numeric(combined["CurrentSalaryAmount"], errors="coerce")
+    x = plot_df["YearsOfExperience"]
+    y = plot_df["SalaryUSD"]
 
-st.subheader("📁 Combined Dataset Preview")
-st.dataframe(combined[[
-    "Year","CurrentSalaryAmount","Member","IsCertified","Experience",
-    "Education","Gender","AttendedConference","PresentedPaper","ContributedRP"
-]].head())
+    # BEST FIT (Polynomial curve)
+    if len(x) > 3:
+        z = np.polyfit(x, y, 2)
+        p = np.poly1d(z)
+        x_fit = np.linspace(x.min(), x.max(), 200)
+        y_fit = p(x_fit)
 
-# =====================
-# CORRELATION RANKING
-# =====================
-st.subheader("📈 Correlation Ranking (Salary Drivers)")
+    fig, ax = plt.subplots(figsize=(12, 7))
 
-corr_factors = [
-    "Member","IsCertified","Experience","AttendedConference",
-    "PresentedPaper","ContributedRP"
-]
+    # Scatter points
+    ax.scatter(x, y, alpha=0.35)
 
-corr_results = []
+    # Best Fit Line
+    if len(x) > 3:
+        ax.plot(x_fit, y_fit, linewidth=2)
 
-for col in corr_factors:
-    temp = combined[[col,"CurrentSalaryAmount"]].dropna()
-    if len(temp) > 10:
-        temp[col] = pd.factorize(temp[col])[0]
-        r, p = pearsonr(temp[col], temp["CurrentSalaryAmount"])
-        corr_results.append((col, r, p))
+    # Mean & Control Limits (baseline)
+    ax.axhline(base_mean, linewidth=2)
+    ax.axhline(UCL, linestyle="--")
+    ax.axhline(LCL, linestyle="--")
 
-corr_df = pd.DataFrame(corr_results, columns=["Factor","Correlation","P-Value"])
-corr_df["Strength"] = corr_df["Correlation"].abs()
-corr_df = corr_df.sort_values("Strength", ascending=False)
+    # Axis scaling includes ORIGINAL UCL/LCL
+    ymin = min(y.min(), LCL) * 0.95
+    ymax = max(y.max(), UCL) * 1.05
+    ax.set_ylim(ymin, ymax)
 
-st.dataframe(corr_df)
+    ax.set_xlabel("Years of Experience")
+    ax.set_ylabel("Salary (USD)")
+    ax.set_title("Members Salary vs Experience")
 
-# =====================
-# CAUSATION REGRESSION
-# =====================
-st.subheader("Causation Model (Multiple Regression)")
+    # ---- LABELS ON RIGHT SIDE ----
+    right_x = x.max() * 1.02
 
-reg_cols = corr_factors + ["Education"]
+    ax.text(right_x, base_mean, "Mean", va="center")
+    ax.text(right_x, UCL, "UCL (+3σ)", va="center")
+    ax.text(right_x, LCL, "LCL (−3σ)", va="center")
 
-reg_df = combined[["CurrentSalaryAmount"] + reg_cols].dropna()
+    # Remove legend clutter
+    ax.legend([], [], frameon=False)
 
-for c in reg_cols:
-    reg_df[c] = pd.factorize(reg_df[c])[0]
+    st.pyplot(fig)
 
-X = sm.add_constant(reg_df[reg_cols])
-y = reg_df["CurrentSalaryAmount"]
-
-model = sm.OLS(y, X).fit()
-
-st.text(model.summary())
-
-# =====================
-# TOP CAUSATION DRIVERS
-# =====================
-st.subheader("Top Salary Drivers (Causation Rank)")
-
-rank_df = pd.DataFrame({
-    "Factor": reg_cols,
-    "Beta": model.params[1:],
-    "P-Value": model.pvalues[1:]
-})
-
-rank_df["Impact"] = rank_df["Beta"].abs()
-rank_df = rank_df.sort_values("Impact", ascending=False)
-
-st.dataframe(rank_df)
+    # Stats summary
+    st.markdown("### Baseline SPC Statistics (Fixed)")
+    st.write(f"Mean: ${base_mean:,.0f}")
+    st.write(f"Std Dev: ${base_std:,.0f}")
+    st.write(f"UCL (+3σ): ${UCL:,.0f}")
+    st.write(f"LCL (−3σ): ${LCL:,.0f}")
