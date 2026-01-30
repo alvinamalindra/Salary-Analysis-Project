@@ -86,7 +86,7 @@ def plot_group(df, group_filter, title):
     ax.axhline(UCL, linestyle="--")
     ax.axhline(LCL, linestyle="--")
 
-    # ---- Y LIMITS MUST RESPECT TRUE UCL/LCL ----
+    # ---- Y LIMITS ----
     ymin = min(y.min(), LCL) * 0.95
     ymax = max(y.max(), UCL) * 1.05
     ax.set_ylim(ymin, ymax)
@@ -106,9 +106,7 @@ def plot_group(df, group_filter, title):
     ax.set_yticks(np.arange(0, 600000, 50000))
     ax.ticklabel_format(style="plain", axis="y")
 
-    # Remove legend box
     ax.legend([], [], frameon=False)
-
     plt.subplots_adjust(right=0.85)
 
     st.pyplot(fig)
@@ -117,10 +115,21 @@ def plot_group(df, group_filter, title):
     corr = df_plot["YearsOfExperience"].corr(df_plot["SalaryUSD"])
     r2 = corr ** 2
 
-    st.write("Correlation:", round(corr, 4))
-    st.write("R² Best-Fit:", round(r2, 4))
-    st.write("Baseline Mean Salary:", round(base_mean, 2))
-    st.write("Baseline UCL (+3σ):", round(UCL, 2))
+    # ---- BIG BOLD DISPLAY ----
+    st.markdown(
+        f"""
+        <div style="font-size:20px; font-weight:700; line-height:1.6;">
+        Correlation: {corr:.4f}<br>
+        R² Best-Fit: {r2:.4f}<br>
+        Mean Salary: ${base_mean:,.0f}<br>
+        Std Deviation: ${base_std:,.0f}<br>
+        UCL (+3σ): ${UCL:,.0f}<br>
+        LCL (−3σ): ${LCL:,.0f}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 st.title("Salary Pattern Analysis Dashboard")
 
