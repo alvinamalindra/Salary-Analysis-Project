@@ -2,67 +2,54 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator
+import statsmodels.api as sm
 
-FILE_2015 = "2015SalarySurveyDATA.xlsx"
-FILE_2023 = "2023SalarySurvey_DATA.xlsx"
+# =========================
+# FILE (LOCAL ONLY)
+# =========================
+DATA_FILE = "salary_usd_cleaned.csv"
 
-COLUMNS = [
-    "Member","EmploymentStatus","WorkFunction","Industry","JobSatisfaction",
-    "LevelOfEducation","YearsOfExperience","Age","Sex","AACECertified",
-    "CurrentSalaryAmount","SameEmployer","WorkHours","Travel","ProjectSize"
-]
-
+# =========================
+# LOAD DATA
+# =========================
 @st.cache_data
 def load_data():
-    df_2015 = pd.read_excel(FILE_2015)
-    df_2023 = pd.read_excel(FILE_2023)
+    df = pd.read_csv(DATA_FILE)
 
-    df_2015 = df_2015[COLUMNS]
-    df_2023 = df_2023[COLUMNS]
+    df["YearsOfExperience"] = pd.to_numeric(df["YearsOfExperience"], errors="coerce")
+    df["SalaryUSD"] = pd.to_numeric(df["Salary_USD"], errors="coerce")
+    df["Age"] = pd.to_numeric(df["Age"], errors="coerce")
 
-    df_2015["SurveyYear"] = 2015
-    df_2023["SurveyYear"] = 2023
+    df["IsCertified"] = df["AACECertified"].astype(str).str.contains("Yes", case=False, na=False)
+    df["IsMember"] = df["Member"].astype(str).str.contains("Yes", case=False, na=False)
+    df["IsFemale"] = df["Sex"].astype(str).str.contains("Female", case=False, na=False)
 
-    combined = pd.concat([df_2015, df_2023], ignore_index=True)
-
-    combined["YearsOfExperience"] = pd.to_numeric(combined["YearsOfExperience"], errors="coerce")
-    combined["CurrentSalaryAmount"] = pd.to_numeric(combined["CurrentSalaryAmount"], errors="coerce")
-    combined["Age"] = pd.to_numeric(combined["Age"], errors="coerce")
-
-    combined["IsCertified"] = combined["AACECertified"].astype(str).str.contains("Yes", case=False, na=False)
-    combined["IsMember"] = combined["Member"].astype(str).str.contains("Yes", case=False, na=False)
-    combined["IsFemale"] = combined["Sex"].astype(str).str.contains("Female", case=False, na=False)
-
-    combined["SalaryUSD"] = combined["CurrentSalaryAmount"]
-
-    return combined
+    return df
 
 
+# =========================
+# APPROVED PLOT FUNCTION
+# DO NOT MODIFY
+# =========================
 def plot_group(df, group_filter, title):
     df_group = df[group_filter].dropna(subset=["YearsOfExperience", "SalaryUSD"])
-
-    df_group = df_group[df_group["SalaryUSD"] > 10000]
-    df_group = df_group[df_group["SalaryUSD"] < 500000]
+    df_group = df_group[df_group["SalaryUSD"].between(10000, 500000)]
 
     if len(df_group) < 10:
         st.write("Not enough data for", title)
         return
 
-    # ---- BASELINE STATS (DO NOT CHANGE) ----
     base_mean = df_group["SalaryUSD"].mean()
     base_std = df_group["SalaryUSD"].std()
 
     UCL = base_mean + 3 * base_std
     LCL = base_mean - 3 * base_std
 
-    # ---- FILTER ONLY FOR DISPLAY ----
     df_plot = df_group[df_group["SalaryUSD"] <= UCL]
 
     x = df_plot["YearsOfExperience"]
     y = df_plot["SalaryUSD"]
 
-    # Best-fit polynomial
     if len(x) > 5:
         z = np.polyfit(x, y, 3)
         p = np.poly1d(z)
@@ -73,83 +60,147 @@ def plot_group(df, group_filter, title):
         y_fit = None
 
     fig, ax = plt.subplots(figsize=(5.6, 3.4))
-
-    # Scatter points
     ax.scatter(x, y, alpha=0.35, s=14)
 
-    # Best-fit curve
     if y_fit is not None:
-        ax.plot(x_sorted, y_fit)
+        ax.plot(x_sorted, y_fit, color="fuchsia", linewidth=3)
 
-    # ---- CONTROL LINES (BASELINE, NEVER MOVE) ----
     ax.axhline(base_mean)
     ax.axhline(UCL, linestyle="--")
     ax.axhline(LCL, linestyle="--")
 
-    # ---- Y LIMITS ----
-    ymin = min(y.min(), LCL) * 0.95
-    ymax = max(y.max(), UCL) * 1.05
-    ax.set_ylim(ymin, ymax)
+    # Right-side label position
+    x_max = x.max()
+    x_label_pos = x_max + (x_max * 0.03)
 
-    # ---- LABELS ON RIGHT ----
-    x_label_pos = x_sorted.max() + (x_sorted.max() * 0.03)
+    ax.text(
+        x_label_pos,
+        base_mean,
+        "Mean",
+        va="center"
+    )
 
-    ax.text(x_label_pos, base_mean, "Mean", va="center")
-    ax.text(x_label_pos, UCL, "UCL +3σ", va="center")
-    ax.text(x_label_pos, LCL, "LCL −3σ", va="center")
+    ax.text(
+        x_label_pos,
+        UCL,
+        "UCL +3σ",
+        va="center"
+    )
+
+    ax.text(
+        x_label_pos,
+        LCL,
+        "LCL −3σ",
+        va="center"
+    )
 
     ax.set_xlabel("Years of Experience")
     ax.set_ylabel("Salary (USD)")
     ax.set_title(title)
 
-    # Granularity 50k
-    ax.set_yticks(np.arange(0, 600000, 50000))
     ax.ticklabel_format(style="plain", axis="y")
-
-    ax.legend([], [], frameon=False)
     plt.subplots_adjust(right=0.85)
 
     st.pyplot(fig)
 
-    # ---- METRICS ----
     corr = df_plot["YearsOfExperience"].corr(df_plot["SalaryUSD"])
     r2 = corr ** 2
 
-    # ---- BIG BOLD DISPLAY ----
     st.markdown(
-        f"""
-        <div style="font-size:20px; font-weight:700; line-height:1.6;">
-        Correlation: {corr:.4f}<br>
-        R² Best-Fit: {r2:.4f}<br>
-        Mean Salary: ${base_mean:,.0f}<br>
-        Std Deviation: ${base_std:,.0f}<br>
-        UCL (+3σ): ${UCL:,.0f}<br>
-        LCL (−3σ): ${LCL:,.0f}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    f"""
+    Correlation: {corr:.4f}  
+    R²: {r2:.4f}  
+    Mean Salary: ${base_mean:,.0f}  
+    Std Deviation: ${base_std:,.0f}  
+    UCL (+3σ): ${UCL:,.0f}  
+    LCL (−3σ): ${LCL:,.0f}
+    """
+)
 
 
-st.title("Salary Pattern Analysis Dashboard")
+
+# =========================
+# APP
+# =========================
+st.title("Salary Analysis Dashboard")
 
 df = load_data()
 st.write("Total records:", len(df))
 
-st.subheader("Members Only")
-plot_group(df, df["IsMember"] == True, "Members Salary vs Experience")
+df_2015 = df[df["SurveyYear"] == 2015]
+df_2023 = df[df["SurveyYear"] == 2023]
 
-st.subheader("Non-Members Only")
-plot_group(df, df["IsMember"] == False, "Non-Members Salary vs Experience")
+# =========================
+# MEMBERSHIP
+# =========================
+st.header("Members vs Non-Members")
 
-st.subheader("Certified Only")
-plot_group(df, df["IsCertified"] == True, "Certified Salary vs Experience")
+c1, c2 = st.columns(2)
 
-st.subheader("Non-Certified Only")
-plot_group(df, df["IsCertified"] == False, "Non-Certified Salary vs Experience")
+with c1:
+    plot_group(df_2015, df_2015["IsMember"], "Members (2015)")
+    plot_group(df_2015, ~df_2015["IsMember"], "Non-Members (2015)")
 
-st.subheader("Women Only")
-plot_group(df, df["IsFemale"] == True, "Women Salary vs Experience")
+with c2:
+    plot_group(df_2023, df_2023["IsMember"], "Members (2023)")
+    plot_group(df_2023, ~df_2023["IsMember"], "Non-Members (2023)")
 
-st.subheader("Men Only")
-plot_group(df, df["IsFemale"] == False, "Men Salary vs Experience")
+# =========================
+# CERTIFICATION
+# =========================
+st.header("Certification Effect")
+
+c1, c2 = st.columns(2)
+
+with c1:
+    plot_group(df_2015, df_2015["IsCertified"], "Certified (2015)")
+    plot_group(df_2015, ~df_2015["IsCertified"], "Non-Certified (2015)")
+
+with c2:
+    plot_group(df_2023, df_2023["IsCertified"], "Certified (2023)")
+    plot_group(df_2023, ~df_2023["IsCertified"], "Non-Certified (2023)")
+
+# =========================
+# GENDER
+# =========================
+st.header("Gender Comparison")
+
+c1, c2 = st.columns(2)
+
+with c1:
+    plot_group(df_2015, df_2015["IsFemale"], "Women (2015)")
+    plot_group(df_2015, ~df_2015["IsFemale"], "Men (2015)")
+
+with c2:
+    plot_group(df_2023, df_2023["IsFemale"], "Women (2023)")
+    plot_group(df_2023, ~df_2023["IsFemale"], "Men (2023)")
+
+# =========================
+# MULTIVARIATE CORRELATION
+# =========================
+st.header("Multivariate Correlation Model")
+
+reg_df = df[
+    [
+        "SalaryUSD",
+        "YearsOfExperience",
+        "IsCertified",
+        "IsMember",
+        "IsFemale"
+    ]
+].dropna()
+
+X = reg_df[
+    [
+        "YearsOfExperience",
+        "IsCertified",
+        "IsMember",
+        "IsFemale"
+    ]
+].astype(float)
+
+X = sm.add_constant(X)
+y = reg_df["SalaryUSD"]
+
+model = sm.OLS(y, X).fit()
+st.text(model.summary())
