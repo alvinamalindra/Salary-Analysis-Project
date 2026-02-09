@@ -26,7 +26,6 @@ def load_data():
 
     return df
 
-
 # =========================
 # APPROVED PLOT FUNCTION
 # DO NOT MODIFY
@@ -176,6 +175,225 @@ with c2:
     plot_group(df_2023, ~df_2023["IsFemale"], "Men (2023)")
 
 # =========================
+# JOB SATISFACTION
+# =========================
+st.header("Job Satisfaction Analysis")
+
+df_sat = df.dropna(subset=["JobSatisfaction", "SalaryUSD"]).copy()
+
+# Clean formatting
+df_sat["JobSatisfaction"] = df_sat["JobSatisfaction"].str.strip().str.lower()
+
+# Logical satisfaction order
+order = [
+    "very dissatisfied",
+    "somewhat dissatisfied",
+    "somewhat satisfied",
+    "very satisfied"
+]
+
+# Display labels (two lines)
+display_labels = [
+    "Very\nDissatisfied",
+    "Somewhat\nDissatisfied",
+    "Somewhat\nSatisfied",
+    "Very\nSatisfied"
+]
+
+# Define satisfied group
+df_sat["IsSatisfied"] = df_sat["JobSatisfaction"].isin(
+    ["very satisfied", "somewhat satisfied"]
+)
+
+pct_satisfied = df_sat["IsSatisfied"].mean() * 100
+st.write(f"Overall Percentage Satisfied: {pct_satisfied:.1f}%")
+
+# -------------------------
+# 1. Satisfaction Distribution (2015 vs 2023)
+# -------------------------
+st.subheader("Job Satisfaction Distribution (2015 vs 2023)")
+
+dist_2015 = (
+    df_sat[df_sat["SurveyYear"] == 2015]["JobSatisfaction"]
+    .value_counts(normalize=True) * 100
+)
+
+dist_2023 = (
+    df_sat[df_sat["SurveyYear"] == 2023]["JobSatisfaction"]
+    .value_counts(normalize=True) * 100
+)
+
+dist_compare = pd.concat([dist_2015, dist_2023], axis=1)
+dist_compare.columns = ["2015 (%)", "2023 (%)"]
+dist_compare = dist_compare.reindex(order)
+dist_compare = dist_compare.fillna(0)
+
+fig, ax = plt.subplots(figsize=(8, 4))
+dist_compare.plot(kind="bar", ax=ax)
+
+ax.set_ylabel("Percentage of Participants")
+ax.set_xlabel("Satisfaction Level")
+ax.set_title("Job Satisfaction Comparison (2015 vs 2023)")
+ax.grid(axis="y", linestyle="--", alpha=0.6)
+
+ax.set_xticklabels(display_labels, rotation=0)
+ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
+
+# Smaller percentage labels
+for container in ax.containers:
+    ax.bar_label(container, fmt="%.1f%%", padding=2, fontsize=8)
+
+plt.tight_layout()
+st.pyplot(fig)
+
+st.dataframe(dist_compare.round(2))
+
+
+# -------------------------
+# 2. Salary by Satisfaction (2015 vs 2023)
+# -------------------------
+st.subheader("Average Salary by Satisfaction Level")
+
+salary_2015 = (
+    df_sat[df_sat["SurveyYear"] == 2015]
+    .groupby("JobSatisfaction")["SalaryUSD"]
+    .mean()
+)
+
+salary_2023 = (
+    df_sat[df_sat["SurveyYear"] == 2023]
+    .groupby("JobSatisfaction")["SalaryUSD"]
+    .mean()
+)
+
+salary_compare = pd.concat([salary_2015, salary_2023], axis=1)
+salary_compare.columns = ["2015 Avg Salary", "2023 Avg Salary"]
+salary_compare = salary_compare.reindex(order)
+salary_compare = salary_compare.fillna(0)
+
+fig2, ax2 = plt.subplots(figsize=(8, 4))
+salary_compare.plot(kind="bar", ax=ax2)
+
+ax2.set_ylabel("Average Salary (USD)")
+ax2.set_xlabel("Satisfaction Level")
+ax2.set_title("Salary by Job Satisfaction (2015 vs 2023)")
+ax2.grid(axis="y", linestyle="--", alpha=0.6)
+
+# Set Y-axis range for cleaner look
+ax2.set_ylim(55000, 145000)
+
+ax2.set_xticklabels(display_labels, rotation=0)
+ax2.legend(loc="upper left", bbox_to_anchor=(1, 1))
+
+# Smaller salary labels
+for container in ax2.containers:
+    ax2.bar_label(container, fmt="%.0f", padding=2, fontsize=8)
+
+plt.tight_layout()
+st.pyplot(fig2)
+
+st.dataframe(salary_compare.round(0))
+
+# =========================
+# GENDER GAP BY EDUCATION
+# =========================
+st.header("Gender Salary Gap by Education Level")
+
+df_gender = df.dropna(subset=["SalaryUSD", "LevelOfEducation"]).copy()
+
+# -------------------------
+# CLEAN & STANDARDIZE EDUCATION LEVELS
+# -------------------------
+df_gender["LevelOfEducation"] = (
+    df_gender["LevelOfEducation"]
+    .str.strip()
+    .str.lower()
+)
+
+# Fix encoding issues and duplicates
+df_gender["LevelOfEducation"] = df_gender["LevelOfEducation"].replace({
+    "undergraduate/bachelor���s degree": "undergraduate or bachelors degree",
+    "undergraduate/bachelor's degree": "undergraduate or bachelors degree",
+    "undergraduate or bachelor’s degree": "undergraduate or bachelors degree",
+    "graduate/master���s degree": "graduate - masters degree",
+    "graduate/master's degree": "graduate - masters degree",
+    "graduate/doctoral degree": "graduate - doctoral degree"
+})
+
+# -------------------------
+# DEFINE LOGICAL EDUCATION ORDER
+# -------------------------
+edu_order = [
+    "high school",
+    "associate degree",
+    "undergraduate or bachelors degree",
+    "graduate - masters degree",
+    "graduate - doctoral degree"
+]
+
+# -------------------------
+# CALCULATE AVERAGES
+# -------------------------
+gender_edu = (
+    df_gender
+    .groupby(["LevelOfEducation", "IsFemale"])["SalaryUSD"]
+    .mean()
+    .unstack()
+)
+
+gender_edu.columns = ["Men Avg Salary", "Women Avg Salary"]
+
+# Reorder properly
+gender_edu = gender_edu.reindex(edu_order)
+
+# Calculate % gap
+gender_edu["Gap % (Women vs Men)"] = (
+    (gender_edu["Women Avg Salary"] - gender_edu["Men Avg Salary"])
+    / gender_edu["Men Avg Salary"]
+) * 100
+
+st.dataframe(gender_edu.round(2))
+
+# -------------------------
+# MULTI-LINE DISPLAY LABELS
+# -------------------------
+display_labels = [
+    "High\nSchool",
+    "Associate\nDegree",
+    "Undergraduate\nBachelor's",
+    "Graduate\nMaster's",
+    "Graduate\nDoctoral"
+]
+
+# -------------------------
+# BAR CHART
+# -------------------------
+fig, ax = plt.subplots(figsize=(10, 4))
+
+gender_edu[["Men Avg Salary", "Women Avg Salary"]].plot(
+    kind="bar",
+    ax=ax
+)
+
+ax.set_ylabel("Average Salary (USD)")
+ax.set_xlabel("Education Level")
+ax.set_title("Average Salary by Gender and Education")
+ax.grid(axis="y", linestyle="--", alpha=0.6)
+
+# Replace x-axis labels
+ax.set_xticklabels(display_labels, rotation=0)
+
+# Legend outside
+ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
+
+# Smaller data labels
+for container in ax.containers:
+    ax.bar_label(container, fmt="%.0f", padding=2, fontsize=8)
+
+plt.tight_layout()
+st.pyplot(fig)
+
+# =========================
 # MULTIVARIATE CORRELATION
 # =========================
 st.header("Multivariate Correlation Model")
@@ -204,3 +422,11 @@ y = reg_df["SalaryUSD"]
 
 model = sm.OLS(y, X).fit()
 st.text(model.summary())
+
+# =========================
+# DEBUG: SHOW ALL COLUMNS
+# =========================
+st.header("Debug: Column Names")
+
+st.write("All Columns in Dataset:")
+st.write(df.columns.tolist())
