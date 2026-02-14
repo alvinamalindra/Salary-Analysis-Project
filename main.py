@@ -111,6 +111,8 @@ def plot_group(df, group_filter, title):
     plt.subplots_adjust(right=0.85)
 
     st.pyplot(fig)
+    plt.close(fig)
+
 
     corr = df_plot["YearsOfExperience"].corr(df_plot["SalaryUSD"])
     r2 = corr ** 2
@@ -284,6 +286,7 @@ for container in ax.containers:
 
 plt.tight_layout()
 st.pyplot(fig)
+plt.close(fig)
 
 st.dataframe(dist_compare.round(2))
 
@@ -329,7 +332,8 @@ for container in ax2.containers:
     ax2.bar_label(container, fmt="%.0f", padding=2, fontsize=8)
 
 plt.tight_layout()
-st.pyplot(fig2)
+st.pyplot(fig)
+plt.close(fig)
 
 st.dataframe(salary_compare.round(0))
 
@@ -478,6 +482,7 @@ for container in ax.containers:
 
 plt.tight_layout()
 st.pyplot(fig)
+plt.close(fig)
 
 # =========================
 # GENDER GAP BY MANAGERIAL ROLE
@@ -589,6 +594,7 @@ def plot_mgr_year(year):
 
     plt.tight_layout()
     st.pyplot(fig)
+    plt.close(fig)
 
 # Plot for both years
 plot_mgr_year(2015)
@@ -702,6 +708,7 @@ def plot_cert_year(year):
 
     plt.tight_layout()
     st.pyplot(fig)
+    plt.close(fig)
 
 # Plot for both years
 plot_cert_year(2015)
@@ -795,6 +802,7 @@ def plot_industry_year(year):
 
     plt.tight_layout()
     st.pyplot(fig)
+    plt.close(fig)
 
 
 # -------------------------
@@ -863,6 +871,7 @@ def plot_consult_year(year):
 
     plt.tight_layout()
     st.pyplot(fig)
+    plt.close(fig)
 
 
 plot_consult_year(2015)
@@ -951,9 +960,274 @@ def plot_project_year(year):
 
     plt.tight_layout()
     st.pyplot(fig)
+    plt.close(fig)
 
 plot_project_year(2015)
 plot_project_year(2023)
+
+# =========================
+# CLEAN CERTIFICATION TYPES
+# =========================
+
+cert_columns = [
+    "CertType1","CertType2","CertType3","CertType4",
+    "CertType5","CertType6","CertType7","CertType8"
+]
+
+cert_codes = ["CCP","CCT","CEP","CFCC","CST","DRMP","EVP","PSP"]
+
+# Create clean indicator columns for each certification
+for cert in cert_codes:
+
+    mask = False
+
+    for col in cert_columns:
+        mask |= df[col].astype(str).str.upper().str.startswith(cert)
+
+    df[f"Has_{cert}"] = mask
+
+st.header("Salary by Certification Type (2015 vs 2023)")
+
+def cert_salary_by_year(year):
+
+    df_year = df[df["SurveyYear"] == year]
+
+    result = {}
+
+    for cert in cert_codes:
+        cert_df = df_year[df_year[f"Has_{cert}"] == True]
+
+        if len(cert_df) > 5:
+            result[cert] = cert_df["SalaryUSD"].mean()
+
+    return pd.Series(result)
+
+
+salary_2015 = cert_salary_by_year(2015)
+salary_2023 = cert_salary_by_year(2023)
+
+salary_compare = pd.concat([salary_2015, salary_2023], axis=1)
+salary_compare.columns = ["2015 Avg Salary", "2023 Avg Salary"]
+
+st.dataframe(salary_compare.round(0))
+
+fig, ax = plt.subplots(figsize=(10, 4))
+salary_compare.plot(kind="bar", ax=ax)
+
+ax.set_ylabel("Average Salary (USD)")
+ax.set_xlabel("Certification")
+ax.set_title("Average Salary by Certification (2015 vs 2023)")
+ax.grid(axis="y", linestyle="--", alpha=0.6)
+ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
+
+for container in ax.containers:
+    ax.bar_label(container, fmt="%.0f", fontsize=8)
+
+plt.tight_layout()
+st.pyplot(fig)
+plt.close(fig)
+
+st.header("Salary by Certification and Gender (2015 vs 2023)")
+
+def cert_gender_chart(year):
+
+    st.subheader(f"{year}")
+
+    df_year = df[df["SurveyYear"] == year]
+
+    results = []
+
+    for cert in cert_codes:
+
+        cert_df = df_year[df_year[f"Has_{cert}"] == True]
+
+        if len(cert_df) > 5:
+
+            grouped = cert_df.groupby("IsFemale")["SalaryUSD"].mean()
+
+            men_salary = grouped.get(False, 0)
+            women_salary = grouped.get(True, 0)
+
+            results.append([cert, men_salary, women_salary])
+
+    cert_gender_df = pd.DataFrame(
+        results,
+        columns=["Certification", "Men Avg Salary", "Women Avg Salary"]
+    )
+
+    st.dataframe(cert_gender_df.round(0))
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+
+    cert_gender_df.set_index("Certification")[
+        ["Men Avg Salary", "Women Avg Salary"]
+    ].plot(kind="bar", ax=ax)
+
+    ax.set_ylabel("Average Salary (USD)")
+    ax.set_xlabel("Certification")
+    ax.set_title(f"Salary by Certification and Gender ({year})")
+    ax.grid(axis="y", linestyle="--", alpha=0.6)
+    ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
+
+    for container in ax.containers:
+        ax.bar_label(container, fmt="%.0f", fontsize=7)
+
+    plt.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+
+cert_gender_chart(2015)
+cert_gender_chart(2023)
+
+# =========================
+# ADVANCED MULTIVARIATE MODEL (FULL SAFE VERSION)
+# =========================
+st.header("Advanced Multivariate Salary Model")
+
+df_reg = df.dropna(subset=[
+    "SalaryUSD",
+    "YearsOfExperience",
+    "Age",
+    "LevelOfEducation",
+    "Industry"
+]).copy()
+
+# Clean education
+df_reg["LevelOfEducation"] = df_reg["LevelOfEducation"].astype(str).str.strip().str.lower()
+
+# Manager flag
+df_reg["IsManager"] = df_reg["ManagerialDuties"].astype(str).str.contains("Yes", case=False, na=False)
+
+# Consultant flag
+df_reg["IsConsult"] = df_reg["Consult"].astype(str).str.contains("Yes", case=False, na=False)
+
+# Convert booleans to int explicitly
+df_reg["IsCertified"] = df_reg["IsCertified"].astype(int)
+df_reg["IsMember"] = df_reg["IsMember"].astype(int)
+df_reg["IsFemale"] = df_reg["IsFemale"].astype(int)
+df_reg["IsManager"] = df_reg["IsManager"].astype(int)
+df_reg["IsConsult"] = df_reg["IsConsult"].astype(int)
+
+# Build base X
+X = df_reg[
+    [
+        "YearsOfExperience",
+        "Age",
+        "IsCertified",
+        "IsMember",
+        "IsFemale",
+        "IsManager",
+        "IsConsult"
+    ]
+].copy()
+
+# Convert numeric safely
+X["YearsOfExperience"] = pd.to_numeric(X["YearsOfExperience"], errors="coerce")
+X["Age"] = pd.to_numeric(X["Age"], errors="coerce")
+
+# Dummy variables (force numeric)
+edu_dummies = pd.get_dummies(df_reg["LevelOfEducation"], drop_first=True).astype(int)
+ind_dummies = pd.get_dummies(df_reg["Industry"], drop_first=True).astype(int)
+
+# Combine everything
+X = pd.concat([X, edu_dummies, ind_dummies], axis=1)
+
+# Remove any leftover NaNs
+X = X.dropna()
+y = pd.to_numeric(df_reg.loc[X.index, "SalaryUSD"], errors="coerce")
+
+# Add constant
+X = sm.add_constant(X)
+
+# FINAL numeric check
+X = X.astype(float)
+y = y.astype(float)
+
+model = sm.OLS(y, X).fit()
+
+# =========================
+# CLEAN REGRESSION TABLE
+# =========================
+st.subheader("Regression Results (Clean Summary)")
+
+results_df = pd.DataFrame({
+    "Variable": model.params.index,
+    "Coefficient (USD)": model.params.values,
+    "Std Error": model.bse.values,
+    "P-Value": model.pvalues.values
+})
+
+# Remove constant
+results_df = results_df[results_df["Variable"] != "const"]
+
+# Round values
+results_df["Coefficient (USD)"] = results_df["Coefficient (USD)"].round(0)
+results_df["Std Error"] = results_df["Std Error"].round(0)
+results_df["P-Value"] = results_df["P-Value"].round(4)
+
+# Add significance column
+results_df["Significant?"] = results_df["P-Value"] < 0.05
+
+# Optional: Keep only main variables
+main_vars = [
+    "YearsOfExperience",
+    "Age",
+    "IsCertified",
+    "IsMember",
+    "IsFemale",
+    "IsManager",
+    "IsConsult"
+]
+
+results_main = results_df[results_df["Variable"].isin(main_vars)]
+
+st.dataframe(results_main)
+
+
+# =========================
+# VISUAL: KEY COEFFICIENTS
+# =========================
+st.subheader("Key Salary Impact Factors (Visual)")
+
+coef_df = pd.DataFrame({
+    "Variable": model.params.index,
+    "Coefficient": model.params.values,
+    "p_value": model.pvalues.values
+})
+
+# Keep only main variables
+main_vars = [
+    "YearsOfExperience",
+    "Age",
+    "IsCertified",
+    "IsMember",
+    "IsFemale",
+    "IsManager",
+    "IsConsult"
+]
+
+coef_df = coef_df[coef_df["Variable"].isin(main_vars)]
+
+# Sort by impact
+coef_df = coef_df.sort_values("Coefficient")
+
+fig, ax = plt.subplots(figsize=(8, 4))
+
+bars = ax.barh(coef_df["Variable"], coef_df["Coefficient"])
+
+ax.set_title("Impact on Salary (Holding Other Factors Constant)")
+ax.set_xlabel("Salary Impact (USD)")
+ax.grid(axis="x", linestyle="--", alpha=0.5)
+
+# Add data labels
+for i, v in enumerate(coef_df["Coefficient"]):
+    ax.text(v, i, f"{v:,.0f}", va='center', fontsize=8)
+
+plt.tight_layout()
+st.pyplot(fig)
+plt.close(fig)
+
 
 # =========================
 # MULTIVARIATE CORRELATION
