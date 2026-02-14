@@ -1228,60 +1228,6 @@ plt.tight_layout()
 st.pyplot(fig)
 plt.close(fig)
 
-
-# =========================
-# MULTIVARIATE CORRELATION
-# =========================
-st.header("Multivariate Correlation Model")
-
-reg_df = df[
-    [
-        "SalaryUSD",
-        "YearsOfExperience",
-        "IsCertified",
-        "IsMember",
-        "IsFemale"
-    ]
-].dropna()
-
-X = reg_df[
-    [
-        "YearsOfExperience",
-        "IsCertified",
-        "IsMember",
-        "IsFemale"
-    ]
-].astype(float)
-
-X = sm.add_constant(X)
-y = reg_df["SalaryUSD"]
-
-model = sm.OLS(y, X).fit()
-# =========================
-# CLEAN REGRESSION TABLE
-# =========================
-st.subheader("Regression Results (Simplified Model)")
-
-results_df = pd.DataFrame({
-    "Variable": model.params.index,
-    "Coefficient (USD)": model.params.values,
-    "Std Error": model.bse.values,
-    "P-Value": model.pvalues.values
-})
-
-# Remove constant
-results_df = results_df[results_df["Variable"] != "const"]
-
-# Round nicely
-results_df["Coefficient (USD)"] = results_df["Coefficient (USD)"].round(0)
-results_df["Std Error"] = results_df["Std Error"].round(0)
-results_df["P-Value"] = results_df["P-Value"].round(4)
-
-# Add significance flag
-results_df["Statistically Significant (p < 0.05)"] = results_df["P-Value"] < 0.05
-
-st.dataframe(results_df)
-
 # =========================
 # DEBUG: SHOW ALL COLUMNS
 # =========================
