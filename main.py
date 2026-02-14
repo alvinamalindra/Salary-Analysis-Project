@@ -1145,6 +1145,22 @@ X = X.astype(float)
 y = y.astype(float)
 
 model = sm.OLS(y, X).fit()
+r_squared = model.rsquared
+adj_r_squared = model.rsquared_adj
+f_stat = model.fvalue
+f_pvalue = model.f_pvalue
+
+# =========================
+# MODEL PERFORMANCE METRICS
+# =========================
+st.subheader("Model Performance Summary")
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("R²", f"{r_squared:.3f}")
+col2.metric("Adjusted R²", f"{adj_r_squared:.3f}")
+col3.metric("F-Statistic", f"{f_stat:.1f}")
+col4.metric("Model p-value", f"{f_pvalue:.4e}")
 
 # =========================
 # CLEAN REGRESSION TABLE
@@ -1190,6 +1206,17 @@ st.dataframe(results_main)
 # =========================
 st.subheader("Key Salary Impact Factors (Visual)")
 
+ax.text(
+    0.98,
+    0.02,
+    f"R² = {r_squared:.3f}\nAdj R² = {adj_r_squared:.3f}",
+    transform=ax.transAxes,
+    ha="right",
+    va="bottom",
+    fontsize=9,
+    bbox=dict(facecolor="white", alpha=0.6)
+)
+
 coef_df = pd.DataFrame({
     "Variable": model.params.index,
     "Coefficient": model.params.values,
@@ -1227,6 +1254,47 @@ for i, v in enumerate(coef_df["Coefficient"]):
 plt.tight_layout()
 st.pyplot(fig)
 plt.close(fig)
+
+from statsmodels.stats.stattools import jarque_bera, omni_normtest
+from statsmodels.stats.stattools import durbin_watson
+
+# =========================
+# MODEL DIAGNOSTICS
+# =========================
+st.subheader("Model Diagnostics")
+
+# Residuals
+residuals = model.resid
+
+# Compute tests manually
+omni_stat, omni_p = omni_normtest(residuals)
+jb_stat, jb_p, skew, kurtosis = jarque_bera(residuals)
+dw_stat = durbin_watson(residuals)
+
+diagnostics_df = pd.DataFrame({
+    "Metric": [
+        "Omnibus",
+        "Prob(Omnibus)",
+        "Jarque-Bera",
+        "Prob(JB)",
+        "Skew",
+        "Kurtosis",
+        "Durbin-Watson",
+        "Condition Number"
+    ],
+    "Value": [
+        omni_stat,
+        omni_p,
+        jb_stat,
+        jb_p,
+        skew,
+        kurtosis,
+        dw_stat,
+        model.condition_number
+    ]
+})
+
+st.dataframe(diagnostics_df.round(3))
 
 # =========================
 # DEBUG: SHOW ALL COLUMNS
