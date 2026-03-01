@@ -184,7 +184,7 @@ tab_overview, tab_histogram, tab_satisfaction, tab_gender, tab_certification, ta
     "Job Satisfaction",
     "Gender Gap",
     "Certification",
-    "Regression Model",
+    "Original Model",
     "Causation Analysis"
 ])
 
